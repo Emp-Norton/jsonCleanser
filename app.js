@@ -46,9 +46,6 @@ const processData = (records) => {
 		'leads': []
 	};
 	findDuplicates(records);
-	let testsWrites = ['changed this to that', 'changed that to this', 'another this that swap'];
-
-	writeChangelog(testsWrites)
 }
 
 
