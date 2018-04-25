@@ -3,17 +3,25 @@
 const fs = require('fs');
 
 const writeChangelog = (operation, records) => {
-	
-	records.forEach(change => {
-		let currentChange = `${operation} ${JSON.stringify(change)}\r\n`;
-		fs.appendFile('./changelog.txt', currentChange, (err) => {
-			if (err) {
-				console.log(`Error appending to file: ${err}`);
-			}
-
-			console.log(`Wrote ${JSON.stringify(currentChange)} to changelog.`);
+	if (operation === 'removed') {
+		records.forEach(change => {
+			let currentChange = `Replaced ${JSON.stringify(change)} with updated data.\r\n`;
+			fs.appendFile('./changelog.txt', currentChange, (err) => {
+				if (err) console.log(`Error appending to file: ${err}`);
+				console.log(`Wrote ${JSON.stringify(currentChange)} to changelog.`);
+			});
 		});
-	});
+	} else {
+		records.forEach(change => {
+			let [record, oldID] = change;
+			let newID = record._id;
+			let currentChange = `Changed ID from ${oldID} to ${newID} due to conflict in ${JSON.stringify(record)}. \r\n`;
+			fs.appendFile('./changelog.txt', currentChange, (err) => {
+				if (err) console.log(`Error appending to file: ${err}`);
+				console.log(`Wrote ${JSON.stringify(currentChange)} to changelog.`);
+			});
+		})
+	}
 };
 
 const findDuplicatesByEmail = (records) => {
@@ -56,50 +64,75 @@ const getUpdatedInformation = (emailAddresses) => {
 	return updatedInformation;
 };
 
+const createNewId = () => {
+	let chars = [1,2,3,4,5,6,7,8,9,0];
+	for (let i = 97; i < 123; i++) {
+		chars.push(String.fromCharCode(i));
+	}
+	let suffix = '238jdsnfsj23';
+	let prefix = '';
+	for (let i = 0; i < 5; i++) {
+		prefix += chars[Math.floor(Math.random() * chars.length)];
+	}
+	return prefix + suffix;
+}
+
 const correctDuplicateIds = (recordList) => {
-	let usedIds = [];
-	let needToModify = [];
+	let registeredIDs = [];
+	let conflicts = [];
+	let recordsWithChangedIDs = [];
+	recordList.forEach(currentRecord => {
+		registeredIDs.includes(currentRecord._id) ? conflicts.push(currentRecord._id) : registeredIDs.push(currentRecord._id);
+	});
 	recordList.forEach(record => {
-		let id = record._id;
-		!usedIds.includes(id) ? usedIds.push(id) : needToModify.push(id);
+		if (conflicts.includes(record._id)) {
+			let newID;
+			while (!newID || registeredIDs.includes(newID)) {
+				newID = createNewId();
+			}
+			let oldID = record._id;
+			record._id = newID;
+			recordsWithChangedIDs.push([record, oldID])
+			writeChangelog('changed', recordsWithChangedIDs);
+		}
+	})
+};
+
+const writeUpdatedJson = (cleanData) => {
+	fs.appendFileSync('./test.json', '{"leads":[\r\n', (err) => {
+		if (err) console.log(err);
 	});
 
+	for (let recordIndex = 0; recordIndex < cleanData.leads.length; recordIndex++) {
+		let line = JSON.stringify(cleanData.leads[recordIndex]) + '\r\n';
+		fs.appendFileSync('./test.json', line, (err) => {
+			if (err) console.log(err);
+		});
+	}
 
+	fs.appendFileSync('./test.json', ']\r\n}', (err) => {
+		if (err) console.log(err);
+	});
+	return;
+}
 
-	console.log(usedIds);
-	console.log(needToModify);
-};
 
 const processData = (records) => {
 	let cleanData = {
 		'leads': []
 	};
 
-	let recordsByEmail = findDuplicatesByEmail(records); // all email addresses with arrays of conflicts
+	let recordsByEmail = findDuplicatesByEmail(records); 
 	console.log(recordsByEmail)
 	let currentInfo = getUpdatedInformation(recordsByEmail);
-
-	//let uniqueRecords = getUniqueAddresses(recordsByEmail); // all email addresses with no conflicts
-	// iterate through conflicts and reconcile by selecting the most recent info (prior later on page in tie condition) as offical doc, add to leads array
-	// run a diff on each selection for fields changed (names, address, entryDate)
 	correctDuplicateIds(currentInfo);
+	
+	writeUpdatedJson({"leads": currentInfo});
 
-	//console.log(recordsByEmail);
-	//console.log(currentInfo);
+
 	return cleanData;
 };
 
-const updateJson = (cleanData) => {
-	for (let recordIndex = 0; recordIndex < cleanData.leads.length; recordIndex++) {
-		let line = cleanData.leads[recordIndex]
-		fs.appendFile('./test.json', cleanData.leads[recordIndex], (err) => {
-			if (err) {
-				console.log(err);
-			}
-		})
-	}
-	return;
-}
 
 fs.readFile('./leads.json', 'utf8', (err, data) => {
 	if (err) {
@@ -109,8 +142,6 @@ fs.readFile('./leads.json', 'utf8', (err, data) => {
 
 	data = JSON.parse(data);
 	processData(data.leads);
-	let testWrite = {"leads": [{a: 1}, {b:2}]};
-	updateJson(testWrite)
 });
 
 
